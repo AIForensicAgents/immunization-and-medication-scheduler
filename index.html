@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scale=no">
+<title>Immunization & Medication Scheduler</title>
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+body { background: #f0f7f4; overscroll-behavior: none; }
+.tab-active { color: #059669; border-bottom: 3px solid #059669; }
+.tab-inactive { color: #6b7280; border-bottom: 3px solid transparent; }
+.card-shadow { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.pulse-dot { animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.3); } }
+.slide-up { animation: slideUp 0.3s ease-out; }
+@keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+.fade-in { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+.modal-overlay { background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
+.vaccine-card { transition: all 0.2s ease; }
+.vaccine-card:active { transform: scale(0.98); }
+input, textarea, select { font-size: 16px !important; }
+.chat-bubble { max-width: 85%; }
+.due-badge { animation: gentlePulse 3s infinite; }
+@gentlePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+::-webkit-scrollbar { width: 0; }
+.large-text body, .large-text .text-sm { font-size: 18px !important; }
+.large-text .text-xs { font-size: 16px !important; }
+.large-text .text-base { font-size: 20px !important; }
+.large-text .text-lg { font-size: 22px !important; }
+.large-text .text-xl { font-size: 24px !important; }
+.large-text .text-2xl { font-size: 28px !important; }
+</style>
+</head>
+<body class="min-h-screen pb-20">
+
+<div id="app">
+  <!-- Header -->
+  <header class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 pt-10 pb-6 rounded-b-3xl card-shadow">
+    <div class="flex items-center justify-between mb-1">
+      <div>
+        <h1 class="text-2xl font-bold flex items-center gap-2">💉 ImmuTrack</h1>
+        <p class="text-emerald-100 text-sm mt-1">Keep your little one safe & on schedule</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="toggleLargeText()" class="bg-white/20 rounded-full w-9 h-9 flex items-center justify-center text-lg" title="Toggle large text">Aa</button>
+        <button onclick="toggleLanguage()" class="bg-white/20 rounded-full w-9 h-9 flex items-center justify-center text-sm font-bold" id="langBtn" title="Change language">EN</button>
+      </div>
+    </div>
+    <div id="babyNameHeader" class="mt-3 bg-white/15 rounded-xl px-4 py-3 flex items-center gap-3" style="display:none">
+      <div class="text-3xl">👶</div>
+      <div>
+        <div class="font-semibold text-lg" id="headerBabyName"></div>
+        <div class="text-emerald-100 text-xs" id="headerBabyAge"></div>
+      </div>
+      <div class="ml-auto text-right">
+        <div class="text-2xl font-bold" id="headerNextCount">0</div>
+        <div class="text-emerald-100 text-xs" id="headerNextLabel">due soon</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="flex bg-white card-shadow sticky top-0 z-40">
+    <button onclick="switchTab('schedule')" id="tab-schedule" class="flex-1 py-3 text-sm font-medium tab-active">📅 Schedule</button>
+    <button onclick="switchTab('meds')" id="tab-meds" class="flex-1 py-3 text-sm font-medium tab-inactive">💊 Meds</button>
+    <button onclick="switchTab('chat')" id="tab-chat" class="flex-1 py-3 text-sm font-medium tab-inactive">💬 Ask AI</button>
+    <button onclick="switchTab('reports')" id="tab-reports" class="flex-1 py-3 text-sm font-medium tab-inactive">📊 Reports</button>
+  </nav>
+
+  <!-- Setup Screen -->
+  <div id="setupScreen" class="px-4 py-6 fade-in">
+    <div class="bg-white rounded-2xl card-shadow p-6 max-w-md mx-auto">
+      <div class="text-center mb-6">
+        <div class="text-5xl mb-3">👶</div>
+        <h2 class="text-xl font-bold text-gray-800">Welcome! Let's get started</h2>
+        <p class="text-gray-500 text-sm mt-1">Add your baby's info to create a personalized vaccine & medication schedule</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Baby's Name</label>
+          <input id="babyName" type="text" placeholder="e.g. Emma" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+          <input id="babyDOB" type="date" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Country / Region</label>
+          <select id="babyRegion" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition">
+            <option value="US">🇺🇸 United States (CDC Schedule)</option>
+            <option value="UK">🇬🇧 United Kingdom (NHS Schedule)</option>
+            <option value="WHO">🌍 WHO Recommended Schedule</option>
+            <option value="CA">🇨🇦 Canada</option>
+            <option value="AU">🇦🇺 Australia</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Preferred Language</label>
+          <select id="prefLang" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition">
+            <option value="en">English</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="zh">中文</option>
+            <option value="ar">العربية</option>
+          </select>
+        </div>
+        <button onclick="saveBabyInfo()" class="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-semibold text-lg hover:bg-emerald-700 active:scale-[0.98] transition">
+          🚀 Create Schedule
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule Tab -->
+  <div id="scheduleTab" class="px-4 py-4 hidden">
+    <div id="scheduleLoading" class="text-center py-12 hidden">
+      <div class="inline-block animate-spin text-4xl mb-3">⏳</div>
+      <p class="text-gray-500">Building personalized schedule...</p>
+    </div>
+    <div id="scheduleContent"></div>
+  </div>
+
+  <!-- Meds Tab -->
+  <div id="medsTab" class="px-4 py-4 hidden">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-gray-800">💊 Medications</h2>
+      <button onclick="openAddMedModal()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium">+ Add Med</button>
+    </div>
+    <div id="medsContent">
+      <div class="bg-white rounded-2xl card-shadow p-6 text-center">
+        <div class="text-4xl mb-3">💊</div>
+        <p class="text-gray-500 text-sm">No medications added yet. Tap <strong>+ Add Med</strong> to track vitamins, prescriptions, or OTC meds.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Tab -->
+  <div id="chatTab" class="hidden flex flex-col" style="height: calc(100vh - 140px);">
+    <div id="chatMessages" class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div class="chat-bubble bg-emerald-100 text-emerald-900 rounded-2xl rounded-tl-md px-4 py-3 text-sm slide-up">
+        <p class="font-medium mb-1">🤖 ImmuTrack AI Assistant</p>
+        <p>Hi! I can help answer questions about vaccinations, medications, dosing, side effects, and more. Ask me anything! 💚</p>
+      </div>
+    </div>
+    <div class="px-4 pb-4 bg-gray-50 border-t border-gray-100 pt-3">
+      <div class="flex gap-2">
+        <input id="chatInput" type="text" placeholder="Ask about vaccines, dosing, side effects..." class="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none text-sm" onkeydown="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat()" class="bg-emerald-600 text-white px-4 py-3 rounded-xl font-medium">Send</button>
+      </div>
+      <div class="flex gap-2 mt-2 overflow-x-auto pb-1">
+        <button onclick="quickChat('What are common side effects after infant vaccines?')" class="whitespace-nowrap bg-white border border-gray-200 text-xs px-3 py-1.5 rounded-full text-gray-600">Side effects?</button>
+        <button onclick="quickChat('How do I handle a fever after vaccination?')" class="whitespace-nowrap bg-white border border-gray-200 text-xs px-3 py-1.5 rounded-full text-gray-600">Fever after shot?</button>
+        <button onclick="quickChat('Is it safe to combine vaccines?')" class="whitespace-nowrap bg-white border border-gray-200 text-xs px-3 py-1.5 rounded-full text-gray-600">Combining vaccines?</button>
+        <button onclick="quickChat('What if we missed a vaccine appointment?')" class="whitespace-nowrap bg-white border border-gray-200 text-xs px-3 py-1.5 rounded-full text-gray-600">Missed appointment?</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reports Tab -->
+  <div id="reportsTab" class="px-4 py-4 hidden">
+    <h2 class="text-lg font-bold text-gray-800 mb-4">📊 Adherence Report</h2>
+    <div id="reportsContent">
+      <div class="bg-white rounded-2xl card-shadow p-6">
+        <div class="text-center mb-4">
+          <div class="text-5xl mb-2" id="adherenceEmoji">📈</div>
+          <div class="text-3xl font-bold text-emerald-600" id="adherencePercent">0%</div>
+          <div class="text-gray-500 text-sm">Adherence Rate</div>
+        </div>
+        <div class="bg-gray-100 rounded-full h-4 mb-6">
+          <div class="bg-emerald-500 rounded-full h-4 transition-all duration-700" id="adherenceBar" style="width:0%"></div>
+        </div>
+        <div class="grid grid-cols-3 gap-3 text-center mb-6">
+          <div class="bg-emerald-50 rounded-xl p-3">
+            <div class="text-xl font-bold text-emerald-600" id="completedCount">0</div>
+            <div class="text-xs text-gray-500">Completed</div>
+          </div>
+          <div class="bg-amber-50 rounded-xl p-3">
+            <div class="text-xl font-bold text-amber-600" id="upcomingCount">0</div>
+            <div class="text-xs text-gray-500">Upcoming</div>
+          </div>
+          <div class="bg-red-50 rounded-xl p-3">
+            <div class="text-xl font-bold text-red-600" id="overdueCount">0</div>
+            <div class="text-xs text-gray-500">Overdue</div>
+          </div>
+        </div>
+        <button onclick="exportReport()" class="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-medium text-sm">📤 Export Report</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Med Modal -->
+<div id="addMedModal" class="fixed inset-0 z-50 hidden">
+  <div class="modal-overlay absolute inset-0" onclick="closeAddMedModal()"></div>
+  <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 slide-up max-h-[80vh] overflow-y-auto">
+    <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+    <h3 class="text-lg font-bold text-gray-800 mb-4">💊 Add Medication</h3>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Medication Name</label>
+        <input id="medName" type="text" placeholder="e.g. Vitamin D drops" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Dosage</label>
+        <input id="medDose" type="text" placeholder="e.g. 400 IU / 1 drop" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
+        <select id="medFreq" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 outline-none">
+          <option value="daily">Once daily</option>
+          <option value="twice">Twice daily</option>
+          <option value="thrice">Three times daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="asneeded">As needed</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Reminder Time</label>
+        <input id="medTime" type="time" value="08:00" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+        <textarea id="medNotes" placeholder="e.g. Give with feeding" rows="2" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 outline-none"></textarea>
+      </div>
+      <button onclick="saveMedication()" class="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-semibold text-lg">Save Medication</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vaccine Detail Modal -->
+<div id="vaccineDetailModal" class="fixed inset-0 z-50 hidden">
+  <div class="modal-overlay absolute inset-0" onclick="closeVaccineDetail()"></div>
+  <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 slide-up max-h-[85vh] overflow-y-auto">
+    <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+    <div id="vaccineDetailContent"></div>
+  </div>
+</div>
+
+<!-- Reschedule Modal -->
+<div id="rescheduleModal" class="fixed inset-0 z-50 hidden">
+  <div class="modal-overlay absolute inset-0" onclick="closeReschedule()"></div>
+  <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 slide-up">
+    <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+    <h3 class="text-lg font-bold text-gray-800 mb-2">📅 Reschedule Vaccine</h3>
+    <p class="text-sm text-gray-500 mb-4" id="rescheduleInfo"></p>
+    <div id="rescheduleLoading" class="text-center py-6 hidden">
+      <div class="animate-spin text-3xl mb-2">⏳</div>
+      <p class="text-gray-500 text-sm">AI is finding the optimal new date...</p>
+    </div>
+    <div id="rescheduleResult" class="hidden">
+      <div class="bg-emerald-50 rounded-xl p-4 mb-4" id="rescheduleResultContent"></div>
+      <div class="flex gap-3">
+        <button onclick="closeReschedule()" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium">Cancel</button>
+        <button onclick="confirmReschedule()" class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-medium">Accept</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="text-center py-4 text-xs text-gray-400 px-4">
+  <p>⚕️ Always consult your pediatrician for medical decisions</p>
+  <p class="mt-1">Built with AI by Papersaurus</p>
+</footer>
+
+<script>
+// Global AI tracking
+window.aiTotalInputTokens = 0;
+window.aiTotalOutputTokens = 0;
+window.aiTotalTime = 0;
+window.aiAliasTimes = {};
+
+const API_BASE = 'https://16504442930.work';
+
+// Helper: call AI with retries
+async function callAI(alias, params, retries = 3) {
+  const start = Date.now();
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}/run_prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias, params })
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        if (attempt === retries - 1) {
+          // Reformat error with AI
+          try {
+            const errRes = await fetch(`${API_BASE}/run_prompt`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                alias: 'genericAI',
+                params: {
+                  prompt: `Reformat this API error into a user-friendly message that empowers them to fix it. Include the full original error. Original error: ${errText}. Return JSON with key "friendlyError" as a string.`
+                }
+              })
+            });
+            const errData = await errRes.json();
+            throw new Error(errData.friendlyError || errText);
+          } catch(e2) {
+            throw new Error(`API Error: ${errText}`);
+          }
+        }
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      const data = await res.json();
+      const elapsed = Date.now() - start;
+      window.aiTotalTime += elapsed;
+      if (!window.aiAliasTimes[alias]) window.aiAliasTimes[alias] = 0;
+      window.aiAliasTimes[alias] += elapsed;
+      if (data.input_tokens) window.aiTotalInputTokens += data.input_tokens;
+      if (data.output_tokens) window.aiTotalOutputTokens += data.output_tokens;
+      return data;
+    } catch (e) {
+      if (attempt === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+}
+
+// State
+let state = JSON.parse(localStorage.getItem('immutrack_state') || 'null') || {
+  baby: null,
+  vaccines: [],
+  medications: [],
+  chatHistory: [],
+  language: 'en',
+  largeText: false
+};
+
+function saveState() {
+  localStorage.setItem('immutrack_state', JSON.stringify(state));
+}
+
+// Tabs
+function switchTab(tab) {
+  ['schedule','meds','chat','reports'].forEach(t => {
+    document.getElementById(`tab-${t}`).className = `flex-1 py-3 text-sm font-medium ${t===tab?'tab-active':'tab-inactive'}`;
+    const el = document.getElementById(`${t}Tab`);
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
+  document.getElementById('setupScreen').classList.toggle('hidden', !!state.baby || tab !== 'schedule');
+  if (tab === 'reports') updateReports();
+  if (tab === 'meds') renderMeds();
+}
+
+// Setup
+function saveBabyInfo() {
+  const name = document.getElementById('babyName').value.trim();
+  const dob = document.getElementById('babyDOB').value;
+  const region = document.getElementById('babyRegion').value;
+  const lang = document.getElementById('prefLang').value;
+  
+  if (!name || !dob) {
+    alert('Please enter your baby\'s name and date of birth');
+    return;
+  }
+  
+  state.baby = { name, dob, region };
+  state.language = lang;
+  saveState();
+  
+  document.getElementById('setupScreen').classList.add('hidden');
+  updateHeader();
+  generateSchedule();
+}
+
+function updateHeader() {
+  if (!state.baby) return;
+  document.getElementById('babyNameHeader').style.display = 'flex';
+  document.getElementById('headerBabyName').textContent = state.baby.name;
+  const age = getAge(state.baby.dob);
+  document.getElementById('headerBabyAge').textContent = age;
+  
+  const due = state.vaccines.filter(v => v.status === 'due' || v.status === 'overdue').length;
+  document.getElementById('headerNextCount').textContent = due;
+  document.getElementById('headerNextLabel').textContent = due === 1 ? 'due soon' : 'due soon';
+}
+
+function getAge(dob) {
+  const birth = new Date(dob);
+  const now = new Date();
+  const months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+  if (months < 1) {
+    const days = Math.floor((now - birth) / (1000*60*60*24));
+    return `${days} days old`;
+  }
+  if (months < 24) return `${months} month${months!==1?'s':''} old`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years!==1?'s':''} old`;
+}
+
+function getAgeMonths(dob) {
+  const birth = new Date(dob);
+  const now = new Date();
+  return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+}
+
+// Generate Vaccine Schedule via AI
+async function generateSchedule() {
+  const tab = document.getElementById('scheduleTab');
+  tab.classList.remove('hidden');
+  document.getElementById('scheduleLoading').classList.remove('hidden');
+  document.getElementById('scheduleContent').innerHTML = '';
+  
+  const ageMonths = getAgeMonths(state.baby.dob);
+  
+  try {
+    const result = await callAI('genericAI', {
+      prompt: `You are a pediatric immunization expert. Generate a complete vaccination schedule for a baby born on ${state.baby.dob} (currently ${ageMonths} months old) based on the ${state.baby.region} immunization schedule.
+
+For each vaccine, provide the scheduled date (YYYY-MM-DD format), the status based on today's date (${new Date().toISOString().split('T')[0]}):
+- "completed" if the date is more than 14 days in the past (assume given on time unless told otherwise)
+- "due" if the date is within the next 30 days or within 14 days past
+- "overdue" if the date is more than 14 days past and before "due" window
+- "upcoming" if the date is more than 30 days in the future
+
+Return EXACTLY this JSON format:
+{
+  "vaccines": [
+    {
+      "id": "string - unique id like 'hepb-birth'",
+      "name": "string - vaccine name e.g. 'Hepatitis B (HepB)'",
+      "dose": "string - e.g. '1st dose'",
+      "ageLabel": "string - e.g. 'Birth'",
+      "scheduledDate": "string - YYYY-MM-DD format",
+      "status": "string - one of: completed, due, overdue, upcoming",
+      "description": "string - brief 1-sentence description of what it protects against",
+      "sideEffects": "string - common side effects in brief"
+    }
+  ]
+}
+
+Include all standard vaccines from birth through 18 months: HepB, RV, DTaP, Hib, PCV13, IPV, Influenza, MMR, Varicella, HepA. Include all doses. Return at least 15-20 vaccine entries. Return ONLY valid JSON.`
+    });
+    
+    let vaccines = result.vaccines || [];
+    
+    // Merge with existing state (preserve user modifications)
+    const existingMap = {};
+    state.vaccines.forEach(v => { existingMap[v.id] = v; });
+    
+    vaccines = vaccines.map(v => {
+      if (existingMap[v.id]) {
+        return { ...v, status: existingMap[v.id].status, completedDate: existingMap[v.id].completedDate };
+      }
+      return v;
+    });
+    
+    state.vaccines = vaccines;
+    saveState();
+    renderSchedule();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('scheduleContent').innerHTML = `
+      <div class="bg-red-50 rounded-2xl p-6 text-center">
+        <div class="text-3xl mb-2">😟</div>
+        <p class="text-red-700 font-medium">Couldn't generate schedule</p>
+        <p class="text-red-500 text-sm mt-1">${e.message}</p>
+        <button onclick="generateSchedule()" class="mt-4 bg-red-100 text-red-700 px-6 py-2 rounded-xl text-sm font-medium">Retry</button>
+      </div>`;
+    // Fall back to local schedule
+    generateLocalSchedule();
+  } finally {
+    document.getElementById('scheduleLoading').classList.add('hidden');
+  }
+}
+
+function generateLocalSchedule() {
+  const dob = new Date(state.baby.dob);
+  const addMonths = (d, m) => { const r = new Date(d); r.setMonth(r.getMonth() + m); return r; };
+  const fmt = d => d.toISOString().split('T')[0];
+  const today = new Date();
+  
+  const template = [
+    { id:'hepb-1', name:'Hepatitis B (HepB)', dose:'1st dose', ageLabel:'Birth', months:0, desc:'Protects against hepatitis B virus infection', side:'Soreness at injection site, mild fever' },
+    { id:'hepb-2', name:'Hepatitis B (HepB)', dose:'2nd dose', ageLabel:'1 month', months:1, desc:'Protects against hepatitis B virus infection', side:'Soreness at injection site' },
+    { id:'rv-1', name:'Rotavirus (RV)', dose:'1st dose', ageLabel:'2 months', months:2, desc:'Protects against rotavirus gastroenteritis', side:'Mild diarrhea, irritability' },
+    { id:'dtap-1', name:'DTaP', dose:'1st dose', ageLabel:'2 months', months:2, desc:'Protects against diphtheria, tetanus, and pertussis', side:'Fever, fussiness, soreness' },
+    { id:'hib-1', name:'Hib', dose:'1st dose', ageLabel:'2 months', months:2, desc:'Protects against Haemophilus influenzae type b', side:'Redness at site, fever' },
+    { id:'pcv13-1', name:'PCV13', dose:'1st dose', ageLabel:'2 months', months:2, desc:'Protects against pneumococcal disease', side:'Drowsiness, soreness' },
+    { id:'ipv-1', name:'IPV', dose:'1st dose', ageLabel:'2 months', months:2, desc:'Protects against polio', side:'Soreness at injection site' },
+    { id:'rv-2', name:'Rotavirus (RV)', dose:'2nd dose', ageLabel:'4 months', months:4, desc:'Protects against rotavirus gastroenteritis', side:'Mild diarrhea, irritability' },
+    { id:'dtap-2', name:'DTaP', dose:'2nd dose', ageLabel:'4 months', months:4, desc:'Protects against diphtheria, tetanus, and pertussis', side:'Fever, fussiness' },
+    { id:'hib-2', name:'Hib', dose:'2nd dose', ageLabel:'4 months', months:4, desc:'Protects against Haemophilus influenzae type b', side:'Redness, mild fever' },
+    { id:'pcv13-2', name:'PCV13', dose:'2nd dose', ageLabel:'4 months', months:4, desc:'Protects against pneumococcal disease', side:'Drowsiness, soreness' },
+    { id:'ipv-2', name:'IPV', dose:'2nd dose', ageLabel:'4 months', months:4, desc:'Protects against polio', side:'Soreness' },
+    { id:'rv-3', name:'Rotavirus (RV)', dose:'3rd dose', ageLabel:'6 months', months:6, desc:'Protects against rotavirus gastroenteritis', side:'Mild diarrhea' },
+    { id:'dtap-3', name:'DTaP', dose:'3rd dose', ageLabel:'6 months', months:6, desc:'Protects against diphtheria, tetanus, and pertussis', side:'Fever, fussiness' },
+    { id:'hib-3', name:'Hib', dose:'3rd dose', ageLabel:'6 months', months:6, desc:'Protects against Haemophilus influenzae type b', side:'Redness' },
+    { id:'pcv13-3', name:'PCV13', dose:'3rd dose', ageLabel:'6 months', months:6, desc:'Protects against pneumococcal disease', side:'Drowsiness' },
+    { id:'ipv-3', name:'IPV', dose:'3rd dose', ageLabel:'6 months', months:6, desc:'Protects against polio', side:'Soreness' },
+    { id:'hepb-3', name:'Hepatitis B (HepB)', dose:'3rd dose', ageLabel:'6 months', months:6, desc:'Protects against hepatitis B virus infection', side:'Soreness' },
+    { id:'flu-1', name:'Influenza (Flu)', dose:'Annual', ageLabel:'6 months', months:6, desc:'Protects against seasonal influenza', side:'Soreness, low fever' },
+    { id:'mmr-1', name:'MMR', dose:'1st dose', ageLabel:'12 months', months:12, desc:'Protects against measles, mumps, and rubella', side:'Fever, rash after 7-12 days' },
+    { id:'var-1', name:'Varicella', dose:'1st dose', ageLabel:'12 months', months:12, desc:'Protects against chickenpox', side:'Soreness, mild rash' },
+    { id:'hepa-1', name:'Hepatitis A (HepA)', dose:'1st dose', ageLabel:'12 months', months:12, desc:'Protects against hepatitis A', side:'Soreness, headache' },
+    { id:'pcv13-4', name:'PCV13', dose:'4th dose', ageLabel:'12 months', months:12, desc:'Booster for pneumococcal disease', side:'Drowsiness' },
+    { id:'hib-4', name:'Hib', dose:'Booster', ageLabel:'12 months', months:12, desc:'Booster for Haemophilus influenzae type b', side:'Redness' },
+    { id:'dtap-4', name:'DTaP', dose:'4th dose', ageLabel:'15 months', months:15, desc:'Booster for diphtheria, tetanus, pertussis', side:'Fever, fussiness' },
+    { id:'hepa-2', name:'Hepatitis A (HepA)', dose:'2nd dose', ageLabel:'18 months', months:18, desc:'Protects against hepatitis A', side:'Soreness' },
+  ];
+  
+  const getStatus = (d) => {
+    const diff = (d - today) / (1000*60*60*24);
+    if (diff < -14) return 'completed';
+    if (diff < 30) return 'due';
+    return 'upcoming';
+  };
+  
+  state.vaccines = template.map(t => {
+    const sched = addMonths(dob, t.months);
+    return {
+      id: t.id,
+      name: t.name,
+      dose: t.dose,
+      ageLabel: t.ageLabel,
+      scheduledDate: fmt(sched),
+      status: getStatus(sched),
+      description: t.desc,
+      sideEffects: t.side
+    };
+  });
+  
+  saveState();
+  renderSchedule();
+}
+
+function renderSchedule() {
+  const container = document.getElementById('scheduleContent');
+  if (!state.vaccines.length) {
+    container.innerHTML = '<p class="text-center text-gray-500 py-8">No vaccines scheduled yet</p>';
+    return;
+  }
+  
+  // Group by status priority
+  const overdue = state.vaccines.filter(v => v.status === 'overdue');
+  const due = state.vaccines.filter(v => v.status === 'due');
+  const upcoming = state.vaccines.filter(v => v.status === 'upcoming');
+  const completed = state.vaccines.filter(v => v.status === 'completed');
+  
+  let html = '';
+  
+  if (overdue.length) {
+    html += renderVaccineGroup('🚨 Overdue', overdue, 'red');
+  }
+  if (due.length) {
+    html += renderVaccineGroup('📅 Due Now', due, 'amber');
+  }
+  if (upcoming.length) {
+    html += renderVaccineGroup('🔮 Upcoming', upcoming, 'blue');
+  }
+  if (completed.length) {
+    html += renderVaccineGroup('✅ Completed', completed, 'emerald');
+  }
+  
+  container.innerHTML = html;
+  updateHeader();
+  updateReports();
+}
+
+function renderVaccineGroup(title, vaccines, color) {
+  const colorMap = {
+    red: { bg:'bg-red-50', border:'border-red-200', text:'text-red-700', badge:'bg-red-100 text-red-700', dot:'bg-red-500' },
+    amber: { bg:'bg-amber-50', border:'border-amber-200', text:'text-amber-700', badge:'bg-amber-100 text-amber-700', dot:'bg-amber-500' },
+    blue: { bg:'bg-blue-50', border:'border-blue-200', text:'text-blue-700', badge:'bg-blue-100 text-blue-700', dot:'bg-blue-400' },
+    emerald: { bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700', badge:'bg-emerald-100 text-emerald-700', dot:'bg-emerald-500' }
+  };
+  const c = colorMap[color];
+  
+  let html = `<div class="mb-6 slide-up">
+    <h3 class="text-sm font-bold ${c.text} mb-2 flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full ${c.dot} ${color==='red'||color==='amber'?'pulse-dot':''}"></span>
+      ${title} (${vaccines.length})
+    </h3>`;
+  
+  vaccines.forEach(v => {
+    const dateStr = formatDate(v.scheduledDate);
+    html += `<div class="vaccine-card bg-white rounded-xl card-shadow p-4 mb-2 border-l-4 ${c.border} cursor-pointer" onclick="openVaccineDetail('${v.id}')">
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <div class="font-semibold text-gray-800 text-sm">${v.name}</div>
+          <div class="text-xs text-gray-500 mt-0.5">${v.dose} · ${v.ageLabel}</div>
+          <div class="text-xs text-gray-400 mt-0.5">${dateStr}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${v.status === 'completed' ? '<span class="text-emerald-500 text-xl">✅</span>' : ''}
+          ${v.status === 'due' ? `<button onclick="event.stopPropagation();markComplete('${v.id}')" class="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium">Mark Done</button>` : ''}
+          ${v.status === 'overdue' ? `<button onclick="event.stopPropagation();openReschedule('${v.id}')" class="bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium">Reschedule</button>` : ''}
+          <span class="text-gray-300">›</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  
+  html += '</div>';
+  return html;
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function markComplete(id) {
+  const v = state.vaccines.find(v => v.id === id);
+  if (v) {
+    v.status = 'completed';
+    v.completedDate = new Date().toISOString().split('T')[0];
+    saveState();
+    renderSchedule();
+    showToast(`✅ ${v.name} (${v.dose}) marked as complete!`);
+  }
+}
+
+function openVaccineDetail(id) {
+  const v = state.vaccines.find(v => v.id === id);
+  if (!v) return;
+  
+  const modal = document.getElementById('vaccineDetailModal');
+  const content = document.getElementById('vaccineDetailContent');
+  
+  const statusColors = {
+    completed: 'bg-emerald-100 text-emerald-700',
+    due: 'bg-amber-100 text-amber-700',
+    overdue: 'bg-red-100 text-red-700',
+    upcoming: 'bg-blue-100 text-blue-700'
+  };
+  
+  content.innerHTML = `
+    <div class="text-center mb-4">
+      <div class="text-4xl mb-2">💉</div>
+      <h3 class="text-xl font-bold text-gray-800">${v.name}</h3>
+      <p class="text-gray-500">${v.dose} · ${v.ageLabel}</p>
+      <span class="inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${statusColors[v.status]}">${v.status.toUpperCase()}</span>
+    </div>
+    <div class="space-y-3">
+      <div class="bg-gray-50 rounded-xl p-4">
+        <div class="text-xs font-medium text-gray-500 mb-1">📅 Scheduled Date</div>
+        <div class="text-sm text-gray-800">${formatDate(v.scheduledDate)}</div>
+      </div>
+      ${v.completedDate ? `<div class="bg-emerald-50 rounded-xl p-4">
+        <div class="text-xs font-medium text-emerald-600 mb-1">✅ Completed Date</div>
+        <div class="text-sm text-gray-800">${formatDate(v.completedDate)}</div>
+      </div>` : ''}
+      <div class="bg-gray-50 rounded-xl p-4">
+        <div class="text-xs font-medium text-gray-500 mb-1">🛡️ What it protects against</div>
+        <div class="text-sm text-gray-800">${v.description || 'Information not available'}</div>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-4">
+        <div class="text-xs font-medium text-gray-500 mb-1">⚠️ Common side effects</div>
+        <div class="text-sm text-gray-800">${v.sideEffects || 'Mild soreness at injection site, possible low fever'}</div>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-6">
+      ${v.status !== 'completed' ? `<button onclick="markComplete('${v.id}');closeVaccineDetail();" class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-medium">✅ Mark Complete</button>` : ''}
+      ${v.status === 'overdue' ? `<button onclick="closeVaccineDetail();openReschedule('${v.id}');" class="flex-1 bg-amber-500 text-white py-3 rounded-xl font-medium">📅 Reschedule</button>` : ''}
+      <button onclick="closeVaccineDetail()" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium">Close</button>
+    </div>
+  `;
+  
+  modal.classList.remove('hidden');
+}
+
+function closeVaccineDetail() {
+  document.getElementById('vaccineDetailModal').classList.add('hidden');
+}
+
+// Reschedule
+let rescheduleVaccineId = null;
+let rescheduleNewDate = null;
+
+function openReschedule(id) {
+  rescheduleVaccineId = id;
+  const v = state.vaccines.find(v => v.id === id);
+  if (!v) return;
+  
+  document.getElementById('rescheduleInfo').textContent = `Finding the best new date for ${v.name} (${v.dose})...`;
+  document.getElementById('rescheduleLoading').classList.remove('hidden');
+  document.getElementById('rescheduleResult').classList.add('hidden');
+  document.getElementById('rescheduleModal').classList.remove('hidden');
+  
+  getOptimalReschedule(v);
+}
+
+async function getOptimalReschedule(vaccine) {
+  try {
+    const result = await callAI('genericAI', {
+      prompt: `You are a pediatric immunization scheduling expert. A baby named ${state.baby.name} (born ${state.baby.dob}) missed their ${vaccine.name} ${vaccine.dose} which was scheduled for ${vaccine.scheduledDate}. Today is ${new Date().toISOString().split('T')[0]}.
+
+Considering CDC catch-up schedule guidelines, determine the optimal new date for this vaccine. The date should be as soon as reasonably possible (within the next 1-2 weeks ideally) while respecting minimum intervals.
+
+Return EXACTLY this JSON format:
+{
+  "newDate": "string - YYYY-MM-DD format, the recommended new date",
+  "reasoning": "string - brief 1-2 sentence explanation of why this date is optimal",
+  "urgency": "string - one of: high, medium, low",
+  "instructions": "string - any special instructions for the caregiver"
+}
+
+Return ONLY valid JSON.`
+    });
+    
+    rescheduleNewDate = result.newDate;
+    
+    document.getElementById('rescheduleLoading').classList.add('hidden');
+    document.getElementById('rescheduleResultContent').innerHTML = `
+      <div class="text-center">
+        <div class="text-2xl mb-1">📅</div>
+        <div class="font-bold text-emerald-800">${formatDate(result.newDate)}</div>
+        <div class="text-sm text-emerald-700 mt-1">${result.reasoning}</div>
+        ${result.urgency === 'high' ? '<div class="mt-2 text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full inline-block">⚠️ High priority</div>' : ''}
+        <div class="mt-2 text-xs text-emerald-600">${result.instructions || ''}</div>
+      </div>
+    `;
+    document.getElementById('rescheduleResult').classList.remove('hidden');
+    
+  } catch (e) {
+    // Fallback: suggest 1 week from now
+    rescheduleNewDate = new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0];
+    document.getElementById('rescheduleLoading').classList.add('hidden');
+    document.getElementById('rescheduleResultContent').innerHTML = `
+      <div class="text-center">
+        <div class="text-2xl mb-1">📅</div>
+        <div class="font-bold text-emerald-800">${formatDate(rescheduleNewDate)}</div>
+        <div class="text-sm text-emerald-700 mt-1">Suggested: 1 week from today to catch up promptly.</div>
+      </div>
+    `;
+    document.getElementById('rescheduleResult').classList.remove('hidden');
+  }
+}
+
+function confirmReschedule() {
+  if (!rescheduleVaccineId || !rescheduleNewDate) return;
+  const v = state.vaccines.find(v => v.id === rescheduleVaccineId);
+  if (v) {
+    v.scheduledDate = rescheduleNewDate;
+    v.status = 'due';
+    saveState();
+    renderSchedule();
+    showToast(`📅 ${v.name} rescheduled to ${formatDate(rescheduleNewDate)}`);
+  }
+  closeReschedule();
+}
+
+function closeReschedule() {
+  document.getElementById('rescheduleModal').classList.add('hidden');
+  rescheduleVaccineId = null;
+  rescheduleNewDate = null;
+}
+
+// Medications
+function openAddMedModal() {
+  document.getElementById('addMedModal').classList.remove('hidden');
+}
+
+function closeAddMedModal() {
+  document.getElementById('addMedModal').classList.add('hidden');
+}
+
+function saveMedication() {
+  const name = document.getElementById('medName').value.trim();
+  const dose = document.getElementById('medDose').value.trim();
+  const freq = document.getElementById('medFreq').value;
+  const time = document.getElementById('medTime').value;
+  const notes = document.getElementById('medNotes').value.trim();
+  
+  if (!name || !dose) {
+    alert('Please enter medication name and dosage');
+    return;
+  }
+  
+  state.medications.push({
+    id: Date.now().toString(),
+    name, dose, freq, time, notes,
+    logs: [],
+    createdAt: new Date().toISOString()
+  });
+  
+  saveState();
+  closeAddMedModal();
+  renderMeds();
+  showToast(`💊 ${name} added to your medication list`);
+  
+  // Clear form
+  document.getElementById('medName').value = '';
+  document.getElementById('medDose').value = '';
+  document.getElementById('medNotes').value = '';
+}
+
+function renderMeds() {
+  const container = document.getElementById('medsContent');
+  if (!state.medications.length) {
+    container.innerHTML = `<div class="bg-white rounded-2xl card-shadow p-6 text-center">
+      <div class="text-4xl mb-3">💊</div>
+      <p class="text-gray-500 text-sm">No medications added yet. Tap <strong>+ Add Med</strong> to track vitamins, prescriptions, or OTC meds.</p>
+    </div>`;
+    return;
+  }
+  
+  const freqLabels = { daily: 'Once daily', twice: 'Twice daily', thrice: '3x daily', weekly: 'Weekly', asneeded: 'As needed' };
+  const today = new Date().toISOString().split('T')[0];
+  
+  container.innerHTML = state.medications.map(m => {
+    const givenToday = m.logs.some(l => l.startsWith(today));
+    return `<div class="bg-white rounded-xl card-shadow p-4 mb-3 border-l-4 ${givenToday ? 'border-emerald-400' : 'border-purple-400'}">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="font-semibold text-gray-800">${m.name}</div>
+          <div class="text-xs text-gray-500 mt-0.5">${m.dose} · ${freqLabels[m.freq]} · ${m.time}</div>
+          ${m.notes ? `<div class="text-xs text-gray-400 mt-0.5">${m.notes}</div>` : ''}
+        </div>
+        <div class="flex items-center gap-2">
+          ${givenToday ? '<span class="text-emerald-500 text-lg">✅</span>' : 
+          `<button onclick="logMed('${m.id}')" class="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg font-medium">Log Dose</button>`}
+          <button onclick="deleteMed('${m.id}')" class="text-gray-300 text-lg">🗑️</button>
+        </div>
+      </div>
+      ${m.logs.length ? `<div class="mt-2 flex gap-1 flex-wrap">${m.logs.slice(-7).map(l => `<span class="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">${formatDate(l.split('T')[0])}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function logMed(id) {
+  const m = state.medications.find(m => m.id === id);
+  if (m) {
+    m.logs.push(new Date().toISOString());
+    saveState();
+    renderMeds();
+    showToast(`✅ ${m.name} dose logged!`);
+  }
+}
+
+function deleteMed(id) {
+  if (!confirm('Remove this medication?')) return;
+  state.medications = state.medications.filter(m => m.id !== id);
+  saveState();
+  renderMeds();
+}
+
+// Chat
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  
+  const container = document.getElementById('chatMessages');
+  
+  // User message
+  container.innerHTML += `<div class="flex justify-end"><div class="chat-bubble bg-emerald-600 text-white rounded-2xl rounded-tr-md px-4 py-3 text-sm slide-up">${escapeHtml(msg)}</div></div>`;
+  
+  // Typing indicator
+  const typingId = 'typing-' + Date.now();
+  container.innerHTML += `<div id="${typingId}" class="chat-bubble bg-gray-100 text-gray-500 rounded-2xl rounded-tl-md px-4 py-3 text-sm"><span class="animate-pulse">●●●</span></div>`;
+  container.scrollTop = container.scrollHeight;
+  
+  try {
+    const context = state.baby ? `The user is a parent of a baby named ${state.baby.name}, born ${state.baby.dob}, in the ${state.baby.region} region.` : 'The user is a parent asking about infant health.';
+    const scheduleContext = state.vaccines.length ? `Current vaccine schedule has ${state.vaccines.filter(v=>v.status==='completed').length} completed, ${state.vaccines.filter(v=>v.status==='due').length} due, ${state.vaccines.filter(v=>v.status==='overdue').length} overdue vaccines.` : '';
+    
+    const result = await callAI('genericAI', {
+      prompt: `You are a friendly, knowledgeable pediatric health assistant called ImmuTrack AI. ${context} ${scheduleContext}
+
+The parent asks: "${msg}"
+
+Provide a helpful, accurate, and reassuring response. Be warm and empathetic. Include practical advice. If the question is about a specific medical concern, always recommend consulting their pediatrician for personalized advice.
+
+Keep your response concise (2-4 paragraphs max). Use simple language. Include relevant emoji for warmth.
+
+IMPORTANT: Return EXACTLY this JSON format:
+{
+  "response": "string - your full response text",
+  "followUp": "string - a brief suggested follow-up question the parent might want to ask"
+}
+
+Return ONLY valid JSON.`
+    });
+    
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    
+    const response = result.response || 'I\'m sorry, I couldn\'t process that question. Please try again.';
+    const followUp = result.followUp || '';
+    
+    container.innerHTML += `<div class="chat-bubble bg-emerald-100 text-emerald-900 rounded-2xl rounded-tl-md px-4 py-3 text-sm slide-up">
+      <p class="font-medium mb-1">🤖 ImmuTrack AI</p>
+      <p class="whitespace-pre-line">${escapeHtml(response)}</p>
+      ${followUp ? `<button onclick="quickChat('${escapeHtml(followUp).replace(/'/g, "\\'")}')" class="mt-2 bg-emerald-200 text-emerald-800 text-xs px-3 py-1 rounded-full">💡 ${escapeHtml(followUp)}</button>` : ''}
+    </div>`;
+    
+    state.chatHistory.push({ user: msg, ai: response, time: new Date().toISOString() });
+    saveState();
+    
+  } catch (e) {
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    container.innerHTML += `<div class="chat-bubble bg-red-100 text-red-700 rounded-2xl rounded-tl-md px-4 py-3 text-sm slide-up">
+      <p>Sorry, I had trouble answering that. Please try again! 🙏</p>
+      <p class="text-xs mt-1 opacity-70">${e.message}</p>
+    </div>`;
+  }
+  
+  container.scrollTop = container.scrollHeight;
+}
+
+function quickChat(msg) {
+  document.getElementById('chatInput').value = msg;
+  sendChat();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Reports
+function updateReports() {
+  const completed = state.vaccines.filter(v => v.status === 'completed').length;
+  const due = state.vaccines.filter(v => v.status === 'due').length;
+  const overdue = state.vaccines.filter(v => v.status === 'overdue').length;
+  const upcoming = state.vaccines.filter(v => v.status === 'upcoming').length;
+  const total = state.vaccines.length;
+  const pastDue = completed + due + overdue;
+  const pct = pastDue > 0 ? Math.round((completed / pastDue) * 100) : (total > 0 ? 0 : 100);
+  
+  document.getElementById('adherencePercent').textContent = pct + '%';
+  document.getElementById('adherenceBar').style.width = pct + '%';
+  document.getElementById('completedCount').textContent = completed;
+  document.getElementById('upcomingCount').textContent = upcoming + due;
+  document.getElementById('overdueCount').textContent = overdue;
+  
+  if (pct >= 90) document.getElementById('adherenceEmoji').textContent = '🌟';
+  else if (pct >= 70) document.getElementById('adherenceEmoji').textContent = '👍';
+  else if (pct >= 50) document.getElementById('adherenceEmoji').textContent = '📈';
+  else document.getElementById('adherenceEmoji').textContent = '⚠️';
+}
+
+function exportReport() {
+  const report = {
+    baby: state.baby,
+    generatedAt: new Date().toISOString(),
+    vaccines: state.vaccines,
+    medications: state.medications,
+    summary: {
+      completed: state.vaccines.filter(v => v.status === 'completed').length,
+      due: state.vaccines.filter(v => v.status === 'due').length,
+      overdue: state.vaccines.filter(v => v.status === 'overdue').length,
+      upcoming: state.vaccines.filter(v => v.status === 'upcoming').length
+    }
+  };
+  
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `immutrack-report-${state.baby?.name || 'baby'}-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📤 Report exported!');
+}
+
+// Accessibility
+function toggleLargeText() {
+  state.largeText = !state.largeText;
+  document.documentElement.classList.toggle('large-text', state.largeText);
+  saveState();
+  showToast(state.largeText ? '🔍 Large text ON' : '🔍 Large text OFF');
+}
+
+function toggleLanguage() {
+  const langs = ['en', 'es', 'fr', 'zh', 'ar'];
+  const labels = ['EN', 'ES', 'FR', '中', 'ع'];
+  const idx = langs.indexOf(state.language);
+  const nextIdx = (idx + 1) % langs.length;
+  state.language = langs[nextIdx];
+  document.getElementById('langBtn').textContent = labels[nextIdx];
+  saveState();
+  showToast(`🌐 Language: ${labels[nextIdx]}`);
+}
+
+// Toast
+function showToast(msg) {
+  const existing = document.querySelector('.toast-msg');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast-msg fixed top-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-xl text-sm font-medium z-50 slide-up';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2500);
+}
+
+// Init
+(function init() {
+  if (state.largeText) document.documentElement.classList.add('large-text');
+  
+  if (state.baby) {
+    document.getElementById('setupScreen').classList.add('hidden');
+    document.getElementById('scheduleTab').classList.remove('hidden');
+    updateHeader();
+    
+    if (state.vaccines.length) {
+      // Recalculate statuses based on today
+      const today = new Date();
+      state.vaccines.forEach(v => {
+        if (v.status === 'completed') return; // Don't change completed
+        const d = new Date(v.scheduledDate + 'T00:00:00');
+        const diff = (d - today) / (1000*60*60*24);
+        if (diff < -14) v.status = 'overdue';
+        else if (diff < 30) v.status = 'due';
+        else v.status = 'upcoming';
+      });
+      saveState();
+      renderSchedule();
+    } else {
+      generateSchedule();
+    }
+  }
+  
+  // Set language button
+  const langs = ['en', 'es', 'fr', 'zh', 'ar'];
+  const labels = ['EN', 'ES', 'FR', '中', 'ع'];
+  const idx = langs.indexOf(state.language);
+  if (idx >= 0) document.getElementById('langBtn').textContent = labels[idx];
+  
+  // Request notification permission
+  if ('Notification' in window && Notification.permission === 'default') {
+    setTimeout(() => {
+      Notification.requestPermission();
+    }, 3000);
+  }
+  
+  // Check for due reminders
+  if (state.baby && state.vaccines.length) {
+    const dueVaccines = state.vaccines.filter(v => v.status === 'due' || v.status === 'overdue');
+    if (dueVaccines.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
+      setTimeout(() => {
+        new Notification('💉 ImmuTrack Reminder', {
+          body: `${state.baby.name} has ${dueVaccines.length} vaccine${dueVaccines.length > 1 ? 's' : ''} due!`,
+          icon: '💉'
+        });
+      }, 2000);
+    }
+  }
+})();
+</script>
+</body>
+</html>
